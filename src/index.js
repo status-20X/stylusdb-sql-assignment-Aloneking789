@@ -276,6 +276,7 @@
 
 const { parseQuery } = require('./queryParser');
 const readCSV = require('./csvReader');
+
 function performInnerJoin(data, joinData, joinCondition, fields, table) {
     return data.flatMap(mainRow => {
         return joinData
@@ -293,6 +294,7 @@ function performInnerJoin(data, joinData, joinCondition, fields, table) {
             });
     });
 }
+
 function performLeftJoin(data, joinData, joinCondition, fields, table) {
     return data.flatMap(mainRow => {
         const matchingJoinRows = joinData.filter(joinRow => {
@@ -306,10 +308,12 @@ function performLeftJoin(data, joinData, joinCondition, fields, table) {
         return matchingJoinRows.map(joinRow => createResultRow(mainRow, joinRow, fields, table, true));
     });
 }
+
 function getValueFromRow(row, compoundFieldName) {
     const [tableName, fieldName] = compoundFieldName.split('.');
     return row[`${tableName}.${fieldName}`] || row[fieldName];
 }
+
 function performRightJoin(data, joinData, joinCondition, fields, table) {
     // Cache the structure of a main table row (keys only)
     const mainTableRowStructure = data.length > 0 ? Object.keys(data[0]).reduce((acc, key) => {
@@ -328,6 +332,7 @@ function performRightJoin(data, joinData, joinCondition, fields, table) {
         return createResultRow(mainRowToUse, joinRow, fields, table, true);
     });
 }
+
 function createResultRow(mainRow, joinRow, fields, table, includeAllMainFields) {
     const resultRow = {};
     if (includeAllMainFields) {
@@ -344,6 +349,7 @@ function createResultRow(mainRow, joinRow, fields, table, includeAllMainFields) 
     });
     return resultRow;
 }
+
 function evaluateCondition(row, clause) {
     let { field, operator, value } = clause;
     // Check if the field exists in the row
@@ -363,6 +369,7 @@ function evaluateCondition(row, clause) {
         default: throw new Error(`Unsupported operator: ${operator}`);
     }
 }
+
 // Helper function to parse value based on its apparent type
 function parseValue(value) {
     // Return null or undefined as is
@@ -380,6 +387,7 @@ function parseValue(value) {
     // Assume value is a string if not a number
     return value;
 }
+
 function applyGroupBy(data, groupByFields, aggregateFunctions) {
     const groupResults = {};
     data.forEach(row => {
@@ -444,8 +452,7 @@ function applyGroupBy(data, groupByFields, aggregateFunctions) {
 
 async function executeSELECTQuery(query) {
     try {
-
-        const { fields, table, whereClauses, joinType, joinTable, joinCondition, groupByFields, hasAggregateWithoutGroupBy, orderByFields, limit } = parseQuery(query);
+        const { fields, table, whereClauses, joinType, joinTable, joinCondition, groupByFields, hasAggregateWithoutGroupBy, orderByFields, limit, isDistinct } = parseQuery(query);
         let data = await readCSV(`${table}.csv`);
 
         // Perform INNER JOIN if specified
@@ -465,6 +472,7 @@ async function executeSELECTQuery(query) {
                     throw new Error(`Unsupported JOIN type: ${joinType}`);
             }
         }
+
         // Apply WHERE clause filtering after JOIN (or on the original data if no join)
         let filteredData = whereClauses.length > 0
             ? data.filter(row => whereClauses.every(clause => evaluateCondition(row, clause)))
@@ -521,11 +529,15 @@ async function executeSELECTQuery(query) {
             }
             return groupResults;
         } else {
+            // Handle DISTINCT keyword here
+            if (isDistinct) {
+                data = [...new Map(data.map(item => [fields.map(field => item[field]).join('|'), item])).values()];
+            }
 
             // Order them by the specified fields
-            let orderedResults = groupResults;
+            let orderedResults = data;
             if (orderByFields) {
-                orderedResults = groupResults.sort((a, b) => {
+                orderedResults = data.sort((a, b) => {
                     for (let { fieldName, order } of orderByFields) {
                         if (a[fieldName] < b[fieldName]) return order === 'ASC' ? -1 : 1;
                         if (a[fieldName] > b[fieldName]) return order === 'ASC' ? 1 : -1;
@@ -552,5 +564,5 @@ async function executeSELECTQuery(query) {
         throw new Error(`Error executing query: ${error.message}`);
     }
 }
-  
+
 module.exports = executeSELECTQuery;

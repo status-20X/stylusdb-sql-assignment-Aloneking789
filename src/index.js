@@ -565,4 +565,4 @@ async function executeSELECTQuery(query) {
     }
 }
 
-module.exports = executeSELECTQuery;
+module.exports = {executeSELECTQuery};
